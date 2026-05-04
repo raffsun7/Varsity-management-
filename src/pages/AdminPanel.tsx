@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Suggestion } from '../types';
@@ -9,9 +9,25 @@ import { format } from 'date-fns';
 export default function AdminPanel() {
   const [pendingSuggestions, setPendingSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeView, setActiveView] = useState<'reviews' | 'create'>('reviews');
+  
+  // Review State
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [processing, setProcessing] = useState(false);
+
+  // Creation State
+  const [publishType, setPublishType] = useState<'notice' | 'lecture' | 'note'>('notice');
+  const [formData, setFormData] = useState({
+    title: '',
+    content: '',
+    courseName: '',
+    week: '1',
+    priority: 'normal',
+    audience: 'all',
+    fileUrl: '',
+    videoUrl: ''
+  });
 
   useEffect(() => {
     const q = query(
@@ -29,14 +45,12 @@ export default function AdminPanel() {
   const handleAction = async (suggestion: Suggestion, status: 'approved' | 'rejected') => {
     setProcessing(true);
     try {
-      // 1. Update suggestion status
       await updateDoc(doc(db, 'suggestions', suggestion.id), {
         status,
         feedback: feedback || null,
         processedAt: serverTimestamp()
       });
 
-      // 2. If approved, create the actual content
       if (status === 'approved') {
         if (suggestion.type === 'notice') {
           await addDoc(collection(db, 'notices'), {
@@ -46,12 +60,25 @@ export default function AdminPanel() {
             audience: 'all',
             createdAt: serverTimestamp()
           });
+        } else if (suggestion.type === 'lecture') {
+          await addDoc(collection(db, 'lectures'), {
+            title: suggestion.title,
+            description: suggestion.content,
+            courseName: 'General',
+            week: 1,
+            createdAt: serverTimestamp()
+          });
+        } else if (suggestion.type === 'note') {
+          await addDoc(collection(db, 'notes'), {
+            title: suggestion.title,
+            courseName: 'General',
+            uploadedBy: suggestion.creatorName,
+            visibility: 'public',
+            createdAt: serverTimestamp()
+          });
         }
-        // Lectures/Notes would follow similar logic if link is present in content
-        // For simplicity in this demo, we'll just handle notices
       }
 
-      // 3. Create notification for user
       await addDoc(collection(db, 'notifications'), {
         userId: suggestion.createdBy,
         title: `Suggestion ${status}`,
@@ -71,129 +98,308 @@ export default function AdminPanel() {
     }
   };
 
+  const handleDirectPublish = async (e: FormEvent) => {
+    e.preventDefault();
+    setProcessing(true);
+    try {
+      if (publishType === 'notice') {
+        await addDoc(collection(db, 'notices'), {
+          title: formData.title,
+          message: formData.content,
+          priority: formData.priority,
+          audience: formData.audience,
+          createdAt: serverTimestamp()
+        });
+      } else if (publishType === 'lecture') {
+        await addDoc(collection(db, 'lectures'), {
+          title: formData.title,
+          description: formData.content,
+          courseName: formData.courseName,
+          week: parseInt(formData.week),
+          videoUrl: formData.videoUrl,
+          fileUrl: formData.fileUrl,
+          createdAt: serverTimestamp()
+        });
+      } else if (publishType === 'note') {
+        await addDoc(collection(db, 'notes'), {
+          title: formData.title,
+          fileUrl: formData.fileUrl,
+          courseName: formData.courseName,
+          visibility: 'public',
+          uploadedBy: 'admin',
+          createdAt: serverTimestamp()
+        });
+      }
+      
+      setFormData({
+        title: '',
+        content: '',
+        courseName: '',
+        week: '1',
+        priority: 'normal',
+        audience: 'all',
+        fileUrl: '',
+        videoUrl: ''
+      });
+      alert('Content published successfully!');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   return (
     <div className="space-y-12 pb-20">
-      <section>
-        <h2 className="text-sm font-mono tracking-widest uppercase text-neutral-500 mb-2">Internal Operations</h2>
-        <h1 className="text-5xl font-bold tracking-tight mb-4">Review Desk</h1>
-        <p className="text-lg text-neutral-400 max-w-2xl leading-relaxed">
-          Moderate student and teacher contributions. Approved announcements are published to the main feed instantly.
-        </p>
+      <section className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+        <div>
+          <h2 className="text-sm font-mono tracking-widest uppercase text-neutral-500 mb-2">Institutional Review</h2>
+          <h1 className="text-5xl font-bold tracking-tight mb-4">Admin Dashboard</h1>
+          <p className="text-neutral-400 max-w-xl">
+            Review community contributions or publish official institutional materials directly.
+          </p>
+        </div>
+        
+        <div className="flex bg-[#111111] border border-white/5 p-1 rounded-2xl">
+          <button 
+            onClick={() => setActiveView('reviews')}
+            className={`px-6 h-12 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+              activeView === 'reviews' ? 'bg-white text-black' : 'text-neutral-500 hover:text-white'
+            }`}
+          >
+            Review Queue ({pendingSuggestions.length})
+          </button>
+          <button 
+            onClick={() => setActiveView('create')}
+            className={`px-6 h-12 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+              activeView === 'create' ? 'bg-white text-black' : 'text-neutral-500 hover:text-white'
+            }`}
+          >
+            Direct Publish
+          </button>
+        </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-6">
-        <h3 className="text-xl font-semibold flex items-center gap-3 mb-2">
-          <ShieldCheck className="w-5 h-5 text-neutral-400" />
-          Pending Approvals ({pendingSuggestions.length})
-        </h3>
-
-        <div className="space-y-4">
-          <AnimatePresence mode="popLayout">
-            {pendingSuggestions.map((sg) => (
-              <motion.div
-                key={sg.id}
-                layout
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, x: -100 }}
-                className="bg-[#111111] border border-white/5 rounded-[32px] overflow-hidden"
-              >
-                <div className="p-8">
-                  <div className="flex flex-col md:flex-row gap-8">
-                    <div className="flex-1 space-y-4">
-                      <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-bold uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full text-neutral-400">
-                          {sg.type} contribution
-                        </span>
-                        <span className="text-xs text-neutral-600 flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {sg.timestamp?.toDate ? format(sg.timestamp.toDate(), 'MMM d, h:mm a') : 'Now'}
-                        </span>
-                      </div>
-
-                      <div>
-                        <h4 className="text-2xl font-bold mb-2">{sg.title}</h4>
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-[10px] uppercase font-bold text-neutral-400">
-                            {sg.creatorName.slice(0, 1)}
-                          </div>
-                          <span className="text-xs text-neutral-500">by {sg.creatorName}</span>
+      <div className="grid grid-cols-1 gap-12">
+        {activeView === 'reviews' ? (
+          <div className="space-y-6">
+            <AnimatePresence mode="popLayout">
+              {pendingSuggestions.map((sg) => (
+                <motion.div
+                  key={sg.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, x: -100 }}
+                  className="bg-[#111111] border border-white/5 rounded-[40px] p-8 md:p-12"
+                >
+                  <div className="space-y-8">
+                    <div className="flex flex-wrap items-center gap-4">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full bg-white/5 text-neutral-400">
+                        {sg.type} Suggestion
+                      </span>
+                      <span className="text-xs text-neutral-700 font-mono">
+                        UID: {sg.id.slice(0, 12)}
+                      </span>
+                      <div className="ml-auto flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-[10px] uppercase font-bold text-neutral-400">
+                          {sg.creatorName.slice(0, 1)}
                         </div>
-                        <p className="text-neutral-400 text-lg leading-relaxed whitespace-pre-wrap">{sg.content}</p>
+                        <span className="text-xs text-neutral-500">by {sg.creatorName}</span>
                       </div>
+                    </div>
 
-                      {reviewingId === sg.id ? (
-                        <motion.div 
-                          initial={{ opacity: 0, y: 10 }} 
-                          animate={{ opacity: 1, y: 0 }}
-                          className="space-y-4 pt-6 mt-6 border-t border-white/5"
-                        >
-                          <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Decision Feedback (Optional)</label>
-                            <textarea 
-                              value={feedback}
-                              onChange={(e) => setFeedback(e.target.value)}
-                              placeholder="Reason for approval or rejection..."
-                              className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm focus:outline-none focus:border-white/30 transition-all resize-none"
-                            />
-                          </div>
-                          <div className="flex gap-3">
-                            <button
-                              disabled={processing}
-                              onClick={() => handleAction(sg, 'approved')}
-                              className="flex-1 h-14 bg-green-500 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-green-600 transition-all disabled:opacity-50"
-                            >
-                              <Check className="w-5 h-5" /> Approve & Publish
-                            </button>
-                            <button
-                              disabled={processing}
-                              onClick={() => handleAction(sg, 'rejected')}
-                              className="flex-1 h-14 bg-red-500/10 text-red-500 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50"
-                            >
-                              <X className="w-5 h-5" /> Reject Suggestion
-                            </button>
-                            <button
-                              onClick={() => setReviewingId(null)}
-                              className="h-14 px-6 bg-white/5 text-neutral-400 rounded-2xl font-medium hover:bg-white/10 transition-all"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </motion.div>
-                      ) : (
-                        <div className="pt-6 mt-6 border-t border-white/5 flex gap-3">
+                    <div className="space-y-4">
+                      <h4 className="text-3xl font-bold tracking-tight">{sg.title}</h4>
+                      <p className="text-neutral-400 text-lg leading-relaxed whitespace-pre-wrap">{sg.content}</p>
+                    </div>
+
+                    {reviewingId === sg.id ? (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-8 border-t border-white/5">
+                        <textarea 
+                          value={feedback}
+                          onChange={(e) => setFeedback(e.target.value)}
+                          placeholder="Provide context for your decision..."
+                          className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 text-sm focus:outline-none focus:border-white/30 transition-all resize-none min-h-[120px]"
+                        />
+                        <div className="flex gap-4">
                           <button
-                            onClick={() => {
-                              setReviewingId(sg.id);
-                              setFeedback('');
-                            }}
-                            className="h-12 px-8 bg-white text-black rounded-xl font-bold flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                            disabled={processing}
+                            onClick={() => handleAction(sg, 'approved')}
+                            className="flex-1 h-16 bg-green-500 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-green-600 transition-all"
                           >
-                            <MessageSquare className="w-4 h-4" /> Start Review
+                            <Check className="w-5 h-5" /> Approve & Publish
                           </button>
-                          <button className="h-12 px-6 bg-white/5 text-neutral-400 rounded-xl font-medium hover:bg-white/10 transition-all flex items-center gap-2">
-                            <ExternalLink className="w-4 h-4" /> View Thread
+                          <button
+                            disabled={processing}
+                            onClick={() => handleAction(sg, 'rejected')}
+                            className="flex-1 h-16 bg-red-500 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-red-600 transition-all"
+                          >
+                            <X className="w-5 h-5" /> Reject
                           </button>
+                          <button onClick={() => setReviewingId(null)} className="h-16 px-8 bg-white/5 text-neutral-400 rounded-2xl">Cancel</button>
                         </div>
-                      )}
+                      </motion.div>
+                    ) : (
+                      <div className="pt-8 border-t border-white/5">
+                        <button
+                          onClick={() => setReviewingId(sg.id)}
+                          className="h-14 px-10 bg-white text-black rounded-2xl font-bold flex items-center gap-3 hover:scale-105 active:scale-95 transition-all"
+                        >
+                          <MessageSquare className="w-5 h-5" /> Open Review
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {pendingSuggestions.length === 0 && (
+              <div className="py-32 text-center bg-[#111111] border border-white/5 rounded-[40px]">
+                <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6 text-neutral-800">
+                  <Check className="w-10 h-10" />
+                </div>
+                <h3 className="text-xl font-bold brightness-125">All Caught Up</h3>
+                <p className="text-neutral-500 mt-2">The suggestion queue is empty.</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
+             <div className="lg:col-span-2 space-y-8">
+               <div className="space-y-4">
+                 <h3 className="text-xl font-bold">Content Type</h3>
+                 <div className="space-y-2">
+                   {(['notice', 'lecture', 'note'] as const).map((t) => (
+                     <button
+                       key={t}
+                       onClick={() => setPublishType(t)}
+                       className={`w-full p-6 rounded-2xl border text-left transition-all ${
+                         publishType === t ? 'bg-white text-black border-white' : 'bg-[#111111] text-neutral-500 border-white/5 hover:border-white/20'
+                       }`}
+                     >
+                       <h4 className="font-bold capitalize">{t}</h4>
+                       <p className={`text-xs ${publishType === t ? 'text-black/60' : 'text-neutral-600'}`}>
+                         {t === 'notice' && 'Public announcement for students/staff'}
+                         {t === 'lecture' && 'Academic video or module content'}
+                         {t === 'note' && 'Downloadable study material (PDF)'}
+                       </p>
+                     </button>
+                   ))}
+                 </div>
+               </div>
+             </div>
+
+             <form onSubmit={handleDirectPublish} className="lg:col-span-3 space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Title</label>
+                  <input 
+                    required
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                    placeholder={`Headline for your ${publishType}...`}
+                    className="w-full bg-[#111111] border border-white/5 rounded-2xl px-6 h-14 text-sm focus:outline-none focus:border-white/20 transition-all"
+                  />
+                </div>
+
+                {publishType !== 'note' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Detailed Content</label>
+                    <textarea 
+                      required
+                      rows={6}
+                      value={formData.content}
+                      onChange={(e) => setFormData({...formData, content: e.target.value})}
+                      placeholder="Write the full message or description here..."
+                      className="w-full bg-[#111111] border border-white/5 rounded-[32px] p-6 text-sm focus:outline-none focus:border-white/20 transition-all resize-none"
+                    />
+                  </div>
+                )}
+
+                {(publishType === 'lecture' || publishType === 'note') && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Course Name</label>
+                      <input 
+                        required
+                        type="text"
+                        value={formData.courseName}
+                        onChange={(e) => setFormData({...formData, courseName: e.target.value})}
+                        placeholder="e.g. CS101"
+                        className="w-full bg-[#111111] border border-white/5 rounded-2xl px-6 h-14 text-sm"
+                      />
+                    </div>
+                    {publishType === 'lecture' && (
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Week Number</label>
+                        <input 
+                          required
+                          type="number"
+                          value={formData.week}
+                          onChange={(e) => setFormData({...formData, week: e.target.value})}
+                          className="w-full bg-[#111111] border border-white/5 rounded-2xl px-6 h-14 text-sm"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(publishType === 'lecture' || publishType === 'note') && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">File/Video URL</label>
+                    <input 
+                      required
+                      type="url"
+                      value={publishType === 'lecture' ? formData.videoUrl : formData.fileUrl}
+                      onChange={(e) => setFormData({
+                        ...formData, 
+                        [publishType === 'lecture' ? 'videoUrl' : 'fileUrl']: e.target.value
+                      })}
+                      placeholder="https://..."
+                      className="w-full bg-[#111111] border border-white/5 rounded-2xl px-6 h-14 text-sm"
+                    />
+                  </div>
+                )}
+
+                {publishType === 'notice' && (
+                   <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Priority</label>
+                      <select 
+                        value={formData.priority}
+                        onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                        className="w-full bg-[#111111] border border-white/5 rounded-2xl px-6 h-14 text-sm appearance-none"
+                      >
+                        <option value="low">Low</option>
+                        <option value="normal">Normal</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Audience</label>
+                      <input 
+                        value={formData.audience}
+                        onChange={(e) => setFormData({...formData, audience: e.target.value})}
+                        placeholder="e.g. All Students"
+                        className="w-full bg-[#111111] border border-white/5 rounded-2xl px-6 h-14 text-sm"
+                      />
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+                )}
 
-          {pendingSuggestions.length === 0 && !loading && (
-            <div className="py-20 text-center bg-[#111111] border border-white/5 rounded-[40px]">
-              <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Check className="w-10 h-10 text-neutral-800" />
-              </div>
-              <h3 className="text-xl font-medium text-neutral-300">Desk Cleared</h3>
-              <p className="text-neutral-500 mt-2">No pending suggestions for review.</p>
-            </div>
-          )}
-        </div>
+                <button 
+                  disabled={processing}
+                  className="w-full h-16 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 mt-4"
+                >
+                  <ShieldCheck className="w-5 h-5" />
+                  {processing ? 'Processing...' : `Confirm & Publish ${publishType}`}
+                </button>
+             </form>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+

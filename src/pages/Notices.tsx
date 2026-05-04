@@ -1,16 +1,24 @@
-import { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { useState, useEffect, FormEvent } from 'react';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Notice } from '../types';
+import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
-import { Megaphone, Search, Filter, Clock } from 'lucide-react';
+import { Megaphone, Search, Filter, Clock, Plus, Trash2, Edit3, X } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function Notices() {
+  const { user } = useAuth();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'urgent' | 'normal' | 'low'>('all');
+  
+  // Admin State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
+  const [formData, setFormData] = useState({ title: '', message: '', priority: 'normal' as any, audience: 'All Students' });
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
@@ -21,6 +29,54 @@ export default function Notices() {
     return unsubscribe;
   }, []);
 
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setProcessing(true);
+    try {
+      if (editingNotice) {
+        await updateDoc(doc(db, 'notices', editingNotice.id), {
+          ...formData,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await addDoc(collection(db, 'notices'), {
+          ...formData,
+          createdAt: serverTimestamp()
+        });
+      }
+      closeModal();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this notice?')) return;
+    try {
+      await deleteDoc(doc(db, 'notices', id));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const openModal = (notice?: Notice) => {
+    if (notice) {
+      setEditingNotice(notice);
+      setFormData({ title: notice.title, message: notice.message, priority: notice.priority, audience: notice.audience });
+    } else {
+      setEditingNotice(null);
+      setFormData({ title: '', message: '', priority: 'normal', audience: 'All Students' });
+    }
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingNotice(null);
+  };
+
   const filteredNotices = notices.filter(n => {
     const matchesSearch = n.title.toLowerCase().includes(search.toLowerCase()) || 
                          n.message.toLowerCase().includes(search.toLowerCase());
@@ -29,7 +85,7 @@ export default function Notices() {
   });
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-12 pb-20">
       <section className="flex flex-col md:flex-row md:items-end justify-between gap-8">
         <div>
           <h2 className="text-sm font-mono tracking-widest uppercase text-neutral-500 mb-2 underline underline-offset-4 decoration-white/20">University Board</h2>
@@ -37,6 +93,15 @@ export default function Notices() {
         </div>
         
         <div className="flex flex-wrap gap-4 items-center">
+          {user?.role === 'admin' && (
+            <button 
+              onClick={() => openModal()}
+              className="h-12 px-6 bg-white text-black rounded-2xl font-bold flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/10 shrink-0"
+            >
+              <Plus className="w-5 h-5" /> Create Notice
+            </button>
+          )}
+
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 group-focus-within:text-white transition-colors" />
             <input 
@@ -91,9 +156,23 @@ export default function Notices() {
                       <Clock className="w-3.5 h-3.5" />
                       {notice.createdAt?.toDate ? format(notice.createdAt.toDate(), 'MMMM d, yyyy · p') : 'Pending publishing'}
                     </span>
-                    <span className="text-[10px] font-mono text-neutral-700 uppercase tracking-widest ml-auto">
-                      ID: {notice.id.slice(0, 8)}
-                    </span>
+                    
+                    {user?.role === 'admin' && (
+                      <div className="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => openModal(notice)}
+                          className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-neutral-400 hover:text-white transition-all"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(notice.id)}
+                          className="p-2 bg-red-500/5 hover:bg-red-500/20 rounded-lg text-red-400/60 hover:text-red-500 transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -114,21 +193,90 @@ export default function Notices() {
             </motion.div>
           ))}
         </AnimatePresence>
-
-        {filteredNotices.length === 0 && !loading && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="py-20 text-center"
-          >
-            <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Megaphone className="w-10 h-10 text-neutral-700" />
-            </div>
-            <h3 className="text-xl font-medium text-neutral-300">No notices found</h3>
-            <p className="text-neutral-500 mt-2">Try adjusting your search or filters.</p>
-          </motion.div>
-        )}
       </div>
+
+      {/* Admin Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100]"
+              onClick={closeModal}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-[#0a0a0a] border border-white/10 rounded-[40px] p-12 z-[101] shadow-2xl overflow-y-auto max-h-[90vh] scrollbar-hide"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-3xl font-bold tracking-tight">{editingNotice ? 'Edit Notice' : 'New Notice'}</h3>
+                <button onClick={closeModal} className="p-2 hover:bg-white/5 rounded-xl text-neutral-500"><X /></button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Notice Headline</label>
+                  <input 
+                    required
+                    type="text" 
+                    value={formData.title}
+                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                    placeholder="Enter short, punchy title"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm focus:outline-none focus:border-white/30 transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Priority</label>
+                    <select 
+                      value={formData.priority}
+                      onChange={(e) => setFormData({...formData, priority: e.target.value as any})}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm appearance-none"
+                    >
+                      <option value="low">Low</option>
+                      <option value="normal">Normal</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Target Audience</label>
+                    <input 
+                      value={formData.audience}
+                      onChange={(e) => setFormData({...formData, audience: e.target.value})}
+                      placeholder="e.g. All Students"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm focus:outline-none focus:border-white/30"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Full Message</label>
+                  <textarea 
+                    required
+                    rows={6}
+                    value={formData.message}
+                    onChange={(e) => setFormData({...formData, message: e.target.value})}
+                    placeholder="Detailed notice information..."
+                    className="w-full bg-white/5 border border-white/10 rounded-[32px] p-6 text-sm focus:outline-none focus:border-white/30 transition-all resize-none"
+                  />
+                </div>
+
+                <button 
+                  disabled={processing}
+                  className="w-full h-16 bg-white text-black rounded-2xl font-bold hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 text-lg"
+                >
+                  {processing ? 'Processing...' : (editingNotice ? 'Update Notice' : 'Publish Notice')}
+                </button>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
