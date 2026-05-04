@@ -5,6 +5,7 @@ import { Note, OperationType } from '../types';
 import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import { FileText, Download, Search, HardDrive, Tag, Plus, Edit3, Trash2, X } from 'lucide-react';
+import { NoteSkeleton } from '../components/Skeleton';
 
 export default function Notes() {
   const { user } = useAuth();
@@ -19,13 +20,31 @@ export default function Notes() {
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     const q = query(collection(db, 'notes'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)));
       setLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="space-y-12">
+        <section className="flex flex-col md:flex-row md:items-end justify-between gap-8 animate-pulse">
+          <div className="space-y-4 w-64">
+            <div className="h-4 bg-white/5 rounded-full w-24" />
+            <div className="h-10 bg-white/5 rounded-full" />
+          </div>
+          <div className="h-12 bg-white/5 rounded-2xl w-80" />
+        </section>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1,2,3,4].map(i => <NoteSkeleton key={i} />)}
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

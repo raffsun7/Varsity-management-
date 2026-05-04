@@ -6,6 +6,7 @@ import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import { Megaphone, Search, Filter, Clock, Plus, Trash2, Edit3, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { NoticeSkeleton } from '../components/Skeleton';
 
 export default function Notices() {
   const { user } = useAuth();
@@ -21,13 +22,31 @@ export default function Notices() {
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     const q = query(collection(db, 'notices'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setNotices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notice)));
       setLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="space-y-12">
+        <section className="flex flex-col md:flex-row md:items-end justify-between gap-8 animate-pulse">
+          <div className="space-y-4 w-64">
+            <div className="h-4 bg-white/5 rounded-full w-24" />
+            <div className="h-10 bg-white/5 rounded-full" />
+          </div>
+          <div className="h-12 bg-white/5 rounded-2xl w-80" />
+        </section>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2, 3, 4].map(i => <NoticeSkeleton key={i} />)}
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

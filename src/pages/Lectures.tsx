@@ -5,6 +5,7 @@ import { Lecture, OperationType } from '../types';
 import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import { Video, Play, FileText, Search, BookOpen, Plus, Edit3, Trash2, X } from 'lucide-react';
+import { LectureSkeleton } from '../components/Skeleton';
 
 export default function Lectures() {
   const { user } = useAuth();
@@ -26,13 +27,31 @@ export default function Lectures() {
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     const q = query(collection(db, 'lectures'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setLectures(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lecture)));
       setLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="space-y-12">
+        <section className="flex flex-col md:flex-row md:items-end justify-between gap-8 animate-pulse">
+          <div className="space-y-4 w-64">
+            <div className="h-4 bg-white/5 rounded-full w-24" />
+            <div className="h-10 bg-white/5 rounded-full" />
+          </div>
+          <div className="h-12 bg-white/5 rounded-2xl w-80" />
+        </section>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {[1,2,3].map(i => <LectureSkeleton key={i} />)}
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

@@ -67,22 +67,13 @@ export default function App() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#0a0a0a] text-white">
-        <div className="w-16 h-16 border-4 border-white/10 border-t-white rounded-full animate-spin mb-4" />
-        <p className="text-sm font-medium tracking-widest uppercase opacity-50">Preparing your dashboard...</p>
-      </div>
-    );
-  }
-
   return (
     <AuthContext.Provider value={{ user, loading, refreshProfile }}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+          <Route path="/login" element={(!loading && user) ? <Navigate to="/" /> : <Login />} />
           
-          <Route element={user ? <Layout /> : <Navigate to="/login" />}>
+          <Route element={(loading || user) ? <Layout /> : <Navigate to="/login" />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/notices" element={<Notices />} />
             <Route path="/lectures" element={<Lectures />} />

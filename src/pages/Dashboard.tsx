@@ -7,6 +7,7 @@ import { motion } from 'motion/react';
 import { Megaphone, Video, ArrowRight, Clock, MapPin, ShieldCheck, Lightbulb } from 'lucide-react';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { NoticeSkeleton, Skeleton } from '../components/Skeleton';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -16,13 +17,18 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!user) return;
+
     // Basic stats for Admin
-    if (user?.role === 'admin') {
+    let unsubSuggestions: (() => void) | undefined;
+    let unsubLectures: (() => void) | undefined;
+
+    if (user.role === 'admin') {
       const qSug = query(collection(db, 'suggestions'), where('status', '==', 'pending'));
-      onSnapshot(qSug, (s) => setSuggestionsCount(s.size));
+      unsubSuggestions = onSnapshot(qSug, (s) => setSuggestionsCount(s.size));
 
       const qLec = query(collection(db, 'lectures'));
-      onSnapshot(qLec, (s) => setLecturesCount(s.size));
+      unsubLectures = onSnapshot(qLec, (s) => setLecturesCount(s.size));
     }
 
     // Latest notices for everyone
@@ -32,8 +38,44 @@ export default function Dashboard() {
       setLoading(false);
     });
 
-    return () => unsubscribeNotices();
+    return () => {
+      unsubscribeNotices();
+      unsubSuggestions?.();
+      unsubLectures?.();
+    };
   }, [user]);
+
+  if (loading) {
+    return (
+      <div className="space-y-12 pb-12">
+        <section className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-4">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-12 w-64" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <Skeleton className="px-8 h-16 w-48 rounded-2xl" />
+        </section>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-8">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-8 w-40" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+            <div className="space-y-4">
+              <NoticeSkeleton />
+              <NoticeSkeleton />
+              <NoticeSkeleton />
+            </div>
+          </div>
+          <div className="space-y-6">
+            <Skeleton className="h-64 w-full rounded-[32px]" />
+            <Skeleton className="h-48 w-full rounded-[32px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (user?.role === 'admin') {
     return <AdminDashboard stats={{ suggestionsCount, lecturesCount }} notices={notices} />;

@@ -58,7 +58,9 @@ export default function Layout() {
   }
 
   const handleLogout = async () => {
-    await logout();
+    if (window.confirm('Are you sure you want to end your session?')) {
+      await logout();
+    }
   };
 
   return (

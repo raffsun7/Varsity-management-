@@ -5,6 +5,7 @@ import { Suggestion, OperationType } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Check, X, MessageSquare, ExternalLink, Calendar, Search } from 'lucide-react';
 import { format } from 'date-fns';
+import { Skeleton, NoticeSkeleton } from '../components/Skeleton';
 
 export default function AdminPanel() {
   const [pendingSuggestions, setPendingSuggestions] = useState<Suggestion[]>([]);
@@ -41,6 +42,25 @@ export default function AdminPanel() {
     });
     return unsubscribe;
   }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-12 pb-20">
+        <section className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+          <div className="space-y-4">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-10 w-64" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <Skeleton className="h-14 w-64 rounded-2xl" />
+        </section>
+        <div className="space-y-6">
+          <NoticeSkeleton />
+          <NoticeSkeleton />
+        </div>
+      </div>
+    );
+  }
 
   const handleAction = async (suggestion: Suggestion, status: 'approved' | 'rejected') => {
     setProcessing(true);

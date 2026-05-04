@@ -5,11 +5,11 @@ import { db } from '../lib/firebase';
 import { useState } from 'react';
 
 export default function Login() {
-  const [loading, setLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async () => {
-    setLoading(true);
+    setIsLoggingIn(true);
     setError(null);
     try {
       const result = await signInWithGoogle();
@@ -33,49 +33,79 @@ export default function Login() {
     } catch (err: any) {
       console.error(err);
       setError('Authentication failed. Please try again.');
-    } finally {
-      setLoading(false);
+      setIsLoggingIn(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-6 relative overflow-hidden">
       {/* Background Decor */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-20">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-white blur-[150px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-white blur-[150px]" />
-      </div>
-
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-md bg-[#111111] border border-white/5 rounded-[40px] p-12 text-center relative z-10 shadow-2xl"
+        animate={{ 
+          scale: [1, 1.1, 1],
+          opacity: [0.1, 0.2, 0.1]
+        }}
+        transition={{ duration: 15, repeat: Infinity }}
+        className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none"
       >
-        <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center mb-10 shadow-xl shadow-white/5">
-          <span className="text-black font-black text-4xl leading-none">U</span>
-        </div>
+        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-white blur-[150px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-white blur-[150px]" />
+      </motion.div>
 
-        <h1 className="text-4xl font-bold tracking-tight mb-4 text-white">Welcome Back</h1>
-        <p className="text-neutral-500 mb-10 leading-relaxed">
-          The institutional hub for scholars. Sign in to access notices, lectures, and academic resources.
-        </p>
+      <AnimatePresence mode="wait">
+        {isLoggingIn ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.1 }}
+            className="text-center z-10"
+          >
+            <div className="relative w-24 h-24 mx-auto mb-8">
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                className="absolute inset-0 border-t-2 border-white rounded-full"
+              />
+              <motion.div 
+                animate={{ rotate: -360 }}
+                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                className="absolute inset-4 border-b-2 border-white/20 rounded-full"
+              />
+            </div>
+            <p className="text-xs font-mono tracking-[0.3em] text-neutral-500 animate-pulse">ESTABLISHING SESSION</p>
+          </motion.div>
+        ) : (
+          <motion.div 
+            key="login-card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+            className="w-full max-w-md bg-[#111111] border border-white/5 rounded-[40px] p-12 text-center relative z-10 shadow-2xl"
+          >
+            <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center mb-10 shadow-xl shadow-white/5">
+              <span className="text-black font-black text-4xl leading-none">U</span>
+            </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-sm">
-            {error}
-          </div>
-        )}
+            <h1 className="text-4xl font-bold tracking-tight mb-4 text-white">Welcome Back</h1>
+            <p className="text-neutral-500 mb-10 leading-relaxed">
+              The institutional hub for scholars. Sign in to access notices, lectures, and academic resources.
+            </p>
 
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          className="w-full group relative flex items-center justify-center gap-4 bg-white text-black h-16 rounded-2xl font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
-        >
-          {loading ? (
-            <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
-          ) : (
-            <>
+            {error && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-sm"
+              >
+                {error}
+              </motion.div>
+            )}
+
+            <button
+              onClick={handleLogin}
+              className="w-full group relative flex items-center justify-center gap-4 bg-white text-black h-16 rounded-2xl font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
+            >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
                   fill="currentColor"
@@ -95,14 +125,14 @@ export default function Login() {
                 />
               </svg>
               Continue with Google
-            </>
-          )}
-        </button>
+            </button>
 
-        <p className="mt-10 text-xs text-neutral-600">
-          By signing in, you agree to our <span className="text-neutral-400">Terms of Service</span> and <span className="text-neutral-400">Privacy Policy</span>.
-        </p>
-      </motion.div>
+            <p className="mt-10 text-xs text-neutral-600">
+              By signing in, you agree to our <span className="text-neutral-400">Terms of Service</span> and <span className="text-neutral-400">Privacy Policy</span>.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-2 opacity-30">
         <div className="w-1.5 h-1.5 rounded-full bg-white" />
