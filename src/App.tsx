@@ -90,6 +90,8 @@ export default function App() {
             <Route path="/suggestions" element={<Suggestions />} />
             <Route path="/admin" element={user?.role === 'admin' ? <AdminPanel /> : <Navigate to="/" />} />
           </Route>
+
+          <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
         </Routes>
       </BrowserRouter>
     </AuthContext.Provider>

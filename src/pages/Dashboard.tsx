@@ -103,7 +103,7 @@ function StudentDashboard({ user, notices }: { user: any, notices: Notice[] }) {
       <section className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
           <h2 className="text-sm font-mono tracking-widest uppercase text-neutral-500 mb-2">Student Interface</h2>
-          <h1 className="text-5xl font-bold tracking-tight mb-2">Hello, {user?.name.split(' ')[0]}</h1>
+          <h1 className="text-5xl font-bold tracking-tight mb-2">Hello, {user?.name?.split(' ')[0] || 'Student'}</h1>
           <p className="text-neutral-400 max-w-xl">
             Welcome to your academic feed. Find the latest updates and contribute resources to our community.
           </p>

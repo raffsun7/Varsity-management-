@@ -1,8 +1,8 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError } from '../lib/firebase';
 import { useAuth } from '../App';
-import { Suggestion } from '../types';
+import { Suggestion, OperationType } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lightbulb, Send, Filter, Clock, Trash2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -46,7 +46,7 @@ export default function Suggestions() {
 
     setSubmitting(true);
     try {
-      await addDoc(collection(db, 'suggestions'), {
+      const suggestionRef = await addDoc(collection(db, 'suggestions'), {
         title: newTitle,
         content: newContent,
         type: newType,
@@ -55,11 +55,23 @@ export default function Suggestions() {
         status: 'pending',
         timestamp: serverTimestamp()
       });
+
+      // Notify Admins
+      await addDoc(collection(db, 'notifications'), {
+        userId: 'admin_all',
+        title: 'New Student Suggestion',
+        message: `${user.name} submitted a new ${newType}: "${newTitle}"`,
+        isRead: false,
+        createdAt: serverTimestamp(),
+        relatedId: suggestionRef.id,
+        type: 'new_suggestion',
+        fromName: user.name
+      });
       setNewTitle('');
       setNewContent('');
       setNewType('note');
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'suggestions');
     } finally {
       setSubmitting(false);
     }
@@ -70,7 +82,7 @@ export default function Suggestions() {
     try {
       await deleteDoc(doc(db, 'suggestions', id));
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, `suggestions/${id}`);
     }
   };
 

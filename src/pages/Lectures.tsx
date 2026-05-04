@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { Lecture } from '../types';
+import { db, handleFirestoreError } from '../lib/firebase';
+import { Lecture, OperationType } from '../types';
 import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import { Video, Play, FileText, Search, BookOpen, Plus, Edit3, Trash2, X } from 'lucide-react';
@@ -51,11 +51,22 @@ export default function Lectures() {
       if (editingLecture) {
         await updateDoc(doc(db, 'lectures', editingLecture.id), data);
       } else {
-        await addDoc(collection(db, 'lectures'), { ...data, createdAt: serverTimestamp() });
+        const docRef = await addDoc(collection(db, 'lectures'), { ...data, createdAt: serverTimestamp() });
+        
+        // Notify all students
+        await addDoc(collection(db, 'notifications'), {
+          userId: 'student_all',
+          title: 'New Lecture Available',
+          message: `Admin published a new lecture: "${formData.title}"`,
+          isRead: false,
+          createdAt: serverTimestamp(),
+          relatedId: docRef.id,
+          type: 'new_lecture'
+        });
       }
       closeModal();
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, editingLecture ? OperationType.UPDATE : OperationType.CREATE, editingLecture ? `lectures/${editingLecture.id}` : 'lectures');
     } finally {
       setProcessing(false);
     }
@@ -66,7 +77,7 @@ export default function Lectures() {
     try {
       await deleteDoc(doc(db, 'lectures', id));
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, `lectures/${id}`);
     }
   };
 

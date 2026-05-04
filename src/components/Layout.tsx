@@ -12,15 +12,38 @@ import {
   Menu,
   X
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { logout } from '../lib/firebase';
+import { logout, db } from '../lib/firebase';
 import { cn } from '../lib/utils';
+import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { Notification } from '../types';
+import NotificationCenter from './NotificationCenter';
 
 export default function Layout() {
   const { user } = useAuth();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const userGroup = user.role === 'admin' ? 'admin_all' : 'student_all';
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', 'in', [user.uid, userGroup]),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification)));
+    });
+
+    return unsubscribe;
+  }, [user]);
 
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -72,10 +95,10 @@ export default function Layout() {
         <div className="mt-auto p-8 pt-4 border-t border-white/5">
           <div className="flex items-center gap-3 mb-6 px-4">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neutral-700 to-neutral-900 border border-white/10 flex items-center justify-center overflow-hidden">
-              <span className="text-xs font-bold">{user?.name.slice(0, 2).toUpperCase()}</span>
+              <span className="text-xs font-bold">{user?.name?.slice(0, 2).toUpperCase() || 'UN'}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.name}</p>
+              <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
               <p className="text-xs text-neutral-500 capitalize">{user?.role}</p>
             </div>
           </div>
@@ -105,11 +128,22 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-4 ml-auto">
-            <button className="p-2 text-neutral-400 hover:text-white transition-colors relative">
+            <button 
+              onClick={() => setIsNotificationsOpen(true)}
+              className="p-2 text-neutral-400 hover:text-white transition-colors relative"
+            >
               <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-white rounded-full" />
+              {notifications.some(n => !n.isRead) && (
+                <span className="absolute top-2 right-2 w-2 h-2 bg-white rounded-full ring-2 ring-black" />
+              )}
             </button>
           </div>
+
+          <NotificationCenter 
+            isOpen={isNotificationsOpen} 
+            onClose={() => setIsNotificationsOpen(false)} 
+            notifications={notifications}
+          />
         </header>
 
         {/* Page Content */}

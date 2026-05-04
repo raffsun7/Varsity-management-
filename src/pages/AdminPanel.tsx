@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { Suggestion } from '../types';
+import { db, handleFirestoreError } from '../lib/firebase';
+import { Suggestion, OperationType } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Check, X, MessageSquare, ExternalLink, Calendar, Search } from 'lucide-react';
 import { format } from 'date-fns';
@@ -92,7 +92,7 @@ export default function AdminPanel() {
       setReviewingId(null);
       setFeedback('');
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, `suggestions/${suggestion.id}`);
     } finally {
       setProcessing(false);
     }
@@ -102,16 +102,18 @@ export default function AdminPanel() {
     e.preventDefault();
     setProcessing(true);
     try {
+      let createdDocId = '';
       if (publishType === 'notice') {
-        await addDoc(collection(db, 'notices'), {
+        const docRef = await addDoc(collection(db, 'notices'), {
           title: formData.title,
           message: formData.content,
           priority: formData.priority,
           audience: formData.audience,
           createdAt: serverTimestamp()
         });
+        createdDocId = docRef.id;
       } else if (publishType === 'lecture') {
-        await addDoc(collection(db, 'lectures'), {
+        const docRef = await addDoc(collection(db, 'lectures'), {
           title: formData.title,
           description: formData.content,
           courseName: formData.courseName,
@@ -120,8 +122,9 @@ export default function AdminPanel() {
           fileUrl: formData.fileUrl,
           createdAt: serverTimestamp()
         });
+        createdDocId = docRef.id;
       } else if (publishType === 'note') {
-        await addDoc(collection(db, 'notes'), {
+        const docRef = await addDoc(collection(db, 'notes'), {
           title: formData.title,
           fileUrl: formData.fileUrl,
           courseName: formData.courseName,
@@ -129,7 +132,19 @@ export default function AdminPanel() {
           uploadedBy: 'admin',
           createdAt: serverTimestamp()
         });
+        createdDocId = docRef.id;
       }
+
+      // Notify all students
+      await addDoc(collection(db, 'notifications'), {
+        userId: 'student_all',
+        title: `New ${publishType.charAt(0).toUpperCase() + publishType.slice(1)} Published`,
+        message: `Admin published a new ${publishType}: "${formData.title}"`,
+        isRead: false,
+        createdAt: serverTimestamp(),
+        relatedId: createdDocId,
+        type: `new_${publishType}`
+      });
       
       setFormData({
         title: '',
@@ -143,7 +158,7 @@ export default function AdminPanel() {
       });
       alert('Content published successfully!');
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, publishType === 'notice' ? 'notices' : publishType === 'lecture' ? 'lectures' : 'notes');
     } finally {
       setProcessing(false);
     }

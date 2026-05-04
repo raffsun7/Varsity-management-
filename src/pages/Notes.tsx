@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { Note } from '../types';
+import { db, handleFirestoreError } from '../lib/firebase';
+import { Note, OperationType } from '../types';
 import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import { FileText, Download, Search, HardDrive, Tag, Plus, Edit3, Trash2, X } from 'lucide-react';
@@ -42,15 +42,26 @@ export default function Notes() {
       if (editingNote) {
         await updateDoc(doc(db, 'notes', editingNote.id), data);
       } else {
-        await addDoc(collection(db, 'notes'), { 
+        const docRef = await addDoc(collection(db, 'notes'), { 
           ...data, 
           uploadedBy: user?.name || 'Admin',
           createdAt: serverTimestamp() 
         });
+
+        // Notify all students
+        await addDoc(collection(db, 'notifications'), {
+          userId: 'student_all',
+          title: 'New Study Materials',
+          message: `Admin uploaded new notes: "${formData.title}"`,
+          isRead: false,
+          createdAt: serverTimestamp(),
+          relatedId: docRef.id,
+          type: 'new_note'
+        });
       }
       closeModal();
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, editingNote ? OperationType.UPDATE : OperationType.CREATE, editingNote ? `notes/${editingNote.id}` : 'notes');
     } finally {
       setProcessing(false);
     }
@@ -61,7 +72,7 @@ export default function Notes() {
     try {
       await deleteDoc(doc(db, 'notes', id));
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, `notes/${id}`);
     }
   };
 

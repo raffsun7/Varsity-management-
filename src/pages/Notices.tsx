@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { Notice } from '../types';
+import { db, handleFirestoreError } from '../lib/firebase';
+import { Notice, OperationType } from '../types';
 import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import { Megaphone, Search, Filter, Clock, Plus, Trash2, Edit3, X } from 'lucide-react';
@@ -39,14 +39,25 @@ export default function Notices() {
           updatedAt: serverTimestamp()
         });
       } else {
-        await addDoc(collection(db, 'notices'), {
+        const docRef = await addDoc(collection(db, 'notices'), {
           ...formData,
           createdAt: serverTimestamp()
+        });
+
+        // Notify all students
+        await addDoc(collection(db, 'notifications'), {
+          userId: 'student_all',
+          title: 'Official Notice Issued',
+          message: `Admin published a new notice: "${formData.title}"`,
+          isRead: false,
+          createdAt: serverTimestamp(),
+          relatedId: docRef.id,
+          type: 'new_notice'
         });
       }
       closeModal();
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, editingNotice ? OperationType.UPDATE : OperationType.CREATE, editingNotice ? `notices/${editingNotice.id}` : 'notices');
     } finally {
       setProcessing(false);
     }
@@ -57,7 +68,7 @@ export default function Notices() {
     try {
       await deleteDoc(doc(db, 'notices', id));
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, `notices/${id}`);
     }
   };
 
