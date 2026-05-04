@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../lib/firebase';
 import { Lecture, OperationType } from '../types';
@@ -6,12 +6,18 @@ import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import { Video, Play, FileText, Search, BookOpen, Plus, Edit3, Trash2, X } from 'lucide-react';
 import { LectureSkeleton } from '../components/Skeleton';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Lectures() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('id');
+  
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  
+  const itemRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
 
   // Admin State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,6 +41,14 @@ export default function Lectures() {
     });
     return unsubscribe;
   }, [user]);
+
+  useEffect(() => {
+    if (!loading && highlightId && itemRefs.current[highlightId]) {
+      setTimeout(() => {
+        itemRefs.current[highlightId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 500);
+    }
+  }, [loading, highlightId]);
 
   if (loading) {
     return (
@@ -163,8 +177,17 @@ export default function Lectures() {
         {filteredLectures.map((lecture) => (
           <motion.div
             key={lecture.id}
+            ref={el => itemRefs.current[lecture.id] = el}
             whileHover={{ y: -8 }}
-            className="group bg-[#111111] border border-white/5 rounded-[32px] overflow-hidden hover:border-white/20 transition-all duration-300 relative"
+            animate={{ 
+              borderColor: highlightId === lecture.id ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+              backgroundColor: highlightId === lecture.id ? 'rgba(255, 255, 255, 0.03)' : 'rgba(17, 17, 17, 1)',
+              scale: highlightId === lecture.id ? 1.02 : 1
+            }}
+            transition={{ duration: 0.5 }}
+            className={`group bg-[#111111] border rounded-[32px] overflow-hidden transition-all duration-300 relative ${
+              highlightId === lecture.id ? 'ring-2 ring-white/20' : ''
+            } hover:border-white/20`}
           >
             <div className="aspect-video bg-neutral-900 relative flex items-center justify-center overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent z-10" />

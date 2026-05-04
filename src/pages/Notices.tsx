@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../lib/firebase';
 import { Notice, OperationType } from '../types';
@@ -7,14 +7,20 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Megaphone, Search, Filter, Clock, Plus, Trash2, Edit3, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { NoticeSkeleton } from '../components/Skeleton';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Notices() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('id');
+  
   const [notices, setNotices] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'urgent' | 'normal' | 'low'>('all');
   
+  const itemRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
+
   // Admin State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingNotice, setEditingNotice] = useState<Notice | null>(null);
@@ -30,6 +36,14 @@ export default function Notices() {
     });
     return unsubscribe;
   }, [user]);
+
+  useEffect(() => {
+    if (!loading && highlightId && itemRefs.current[highlightId]) {
+      setTimeout(() => {
+        itemRefs.current[highlightId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 500);
+    }
+  }, [loading, highlightId]);
 
   if (loading) {
     return (
@@ -164,11 +178,21 @@ export default function Notices() {
           {filteredNotices.map((notice) => (
             <motion.div
               key={notice.id}
+              ref={el => itemRefs.current[notice.id] = el}
               layout
               initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              animate={{ 
+                opacity: 1, 
+                y: 0,
+                borderColor: highlightId === notice.id ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+                backgroundColor: highlightId === notice.id ? 'rgba(255, 255, 255, 0.03)' : 'rgba(17, 17, 17, 1)',
+                scale: highlightId === notice.id ? 1.02 : 1
+              }}
+              transition={{ duration: 0.5 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="group p-8 rounded-[32px] bg-[#111111] border border-white/5 hover:bg-[#151515] hover:border-white/10 transition-all duration-300 relative"
+              className={`group p-8 rounded-[32px] border transition-all duration-300 relative ${
+                highlightId === notice.id ? 'ring-2 ring-white/20' : ''
+              } hover:bg-[#151515] hover:border-white/10`}
             >
               <div className="flex flex-col md:flex-row gap-8 items-start">
                 <div className="bg-white/5 w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-500">

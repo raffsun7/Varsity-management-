@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../lib/firebase';
 import { Note, OperationType } from '../types';
@@ -6,12 +6,18 @@ import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
 import { FileText, Download, Search, HardDrive, Tag, Plus, Edit3, Trash2, X } from 'lucide-react';
 import { NoteSkeleton } from '../components/Skeleton';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Notes() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('id');
+  
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  
+  const itemRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
 
   // Admin State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,6 +34,14 @@ export default function Notes() {
     });
     return unsubscribe;
   }, [user]);
+
+  useEffect(() => {
+    if (!loading && highlightId && itemRefs.current[highlightId]) {
+      setTimeout(() => {
+        itemRefs.current[highlightId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 500);
+    }
+  }, [loading, highlightId]);
 
   if (loading) {
     return (
@@ -151,9 +165,18 @@ export default function Notes() {
         {filteredNotes.map((note) => (
           <motion.div
             key={note.id}
+            ref={el => itemRefs.current[note.id] = el}
             initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="group bg-[#111111] border border-white/5 rounded-[28px] p-6 hover:border-white/20 transition-all duration-300 flex flex-col justify-between relative"
+            animate={{ 
+              opacity: 1, 
+              scale: highlightId === note.id ? 1.05 : 1,
+              borderColor: highlightId === note.id ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+              backgroundColor: highlightId === note.id ? 'rgba(255, 255, 255, 0.03)' : 'rgba(17, 17, 17, 1)',
+            }}
+            transition={{ duration: 0.5 }}
+            className={`group bg-[#111111] border rounded-[28px] p-6 transition-all duration-300 flex flex-col justify-between relative ${
+              highlightId === note.id ? 'ring-2 ring-white/20' : ''
+            } hover:border-white/20`}
           >
             {user?.role === 'admin' && (
               <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

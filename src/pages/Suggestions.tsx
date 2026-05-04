@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useRef } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where, deleteDoc, doc } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../lib/firebase';
 import { useAuth } from '../App';
@@ -7,13 +7,19 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Lightbulb, Send, Filter, Clock, Trash2, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton, NoticeSkeleton } from '../components/Skeleton';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Suggestions() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('id');
+  
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
   
+  const itemRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
+
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newType, setNewType] = useState<'notice' | 'lecture' | 'note'>('note');
@@ -22,6 +28,18 @@ export default function Suggestions() {
   useEffect(() => {
     if (!user) return;
     
+    // If we have a highlight ID, we need to find which tab it belongs to
+    if (highlightId && loading) {
+      const qAll = query(collection(db, 'suggestions'), where('createdBy', '==', user.uid));
+      onSnapshot(qAll, (snapshot) => {
+        const allSgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Suggestion));
+        const highlighted = allSgs.find(s => s.id === highlightId);
+        if (highlighted) {
+          setActiveTab(highlighted.status);
+        }
+      });
+    }
+
     let q;
     if (user.role === 'admin') {
       q = query(collection(db, 'suggestions'), where('status', '==', activeTab), orderBy('timestamp', 'desc'));
@@ -39,7 +57,15 @@ export default function Suggestions() {
       setLoading(false);
     });
     return unsubscribe;
-  }, [user, activeTab]);
+  }, [user, activeTab, highlightId]);
+
+  useEffect(() => {
+    if (!loading && highlightId && itemRefs.current[highlightId]) {
+      setTimeout(() => {
+        itemRefs.current[highlightId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 500);
+    }
+  }, [loading, highlightId, suggestions]);
 
   if (loading) {
     return (
@@ -201,10 +227,20 @@ export default function Suggestions() {
             {suggestions.map((sg) => (
               <motion.div
                 key={sg.id}
+                ref={el => itemRefs.current[sg.id] = el}
                 layout
                 initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="p-6 rounded-3xl bg-[#111111] border border-white/5 hover:border-white/10 transition-all group"
+                animate={{ 
+                  opacity: 1, 
+                  x: 0,
+                  borderColor: highlightId === sg.id ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+                  backgroundColor: highlightId === sg.id ? 'rgba(255, 255, 255, 0.03)' : 'rgba(17, 17, 17, 1)',
+                  scale: highlightId === sg.id ? 1.02 : 1
+                }}
+                transition={{ duration: 0.5 }}
+                className={`p-6 rounded-3xl border transition-all group ${
+                  highlightId === sg.id ? 'ring-2 ring-white/20' : ''
+                } hover:border-white/10`}
               >
                 <div className="flex justify-between gap-4 mb-4">
                   <div className="space-y-1">

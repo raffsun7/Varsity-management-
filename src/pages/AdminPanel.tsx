@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useRef } from 'react';
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError } from '../lib/firebase';
 import { Suggestion, OperationType } from '../types';
@@ -6,16 +6,45 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, Check, X, MessageSquare, ExternalLink, Calendar, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton, NoticeSkeleton } from '../components/Skeleton';
+import { useSearchParams } from 'react-router-dom';
 
 export default function AdminPanel() {
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get('id');
+  
   const [pendingSuggestions, setPendingSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<'reviews' | 'create'>('reviews');
   
+  const itemRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
+  
   // Review State
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [reviewFormData, setReviewFormData] = useState({
+    title: '',
+    content: '',
+    courseName: 'General',
+    week: '1',
+    videoUrl: '',
+    fileUrl: '',
+    priority: 'normal'
+  });
   const [processing, setProcessing] = useState(false);
+
+  const startReview = (sg: Suggestion) => {
+    setReviewingId(sg.id);
+    setReviewFormData({
+      title: sg.title,
+      content: sg.content,
+      courseName: 'General',
+      week: '1',
+      videoUrl: '',
+      fileUrl: '',
+      priority: 'normal'
+    });
+    setFeedback('');
+  };
 
   // Creation State
   const [publishType, setPublishType] = useState<'notice' | 'lecture' | 'note'>('notice');
@@ -42,6 +71,20 @@ export default function AdminPanel() {
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (highlightId) {
+      setActiveView('reviews');
+    }
+  }, [highlightId]);
+
+  useEffect(() => {
+    if (!loading && highlightId && itemRefs.current[highlightId]) {
+      setTimeout(() => {
+        itemRefs.current[highlightId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 500);
+    }
+  }, [loading, highlightId]);
 
   if (loading) {
     return (
@@ -72,31 +115,49 @@ export default function AdminPanel() {
       });
 
       if (status === 'approved') {
+        let createdDocId = '';
         if (suggestion.type === 'notice') {
-          await addDoc(collection(db, 'notices'), {
-            title: suggestion.title,
-            message: suggestion.content,
-            priority: 'normal',
+          const docRef = await addDoc(collection(db, 'notices'), {
+            title: reviewFormData.title,
+            message: reviewFormData.content,
+            priority: reviewFormData.priority,
             audience: 'all',
             createdAt: serverTimestamp()
           });
+          createdDocId = docRef.id;
         } else if (suggestion.type === 'lecture') {
-          await addDoc(collection(db, 'lectures'), {
-            title: suggestion.title,
-            description: suggestion.content,
-            courseName: 'General',
-            week: 1,
+          const docRef = await addDoc(collection(db, 'lectures'), {
+            title: reviewFormData.title,
+            description: reviewFormData.content,
+            courseName: reviewFormData.courseName,
+            week: parseInt(reviewFormData.week) || 1,
+            videoUrl: reviewFormData.videoUrl,
+            fileUrl: reviewFormData.fileUrl,
             createdAt: serverTimestamp()
           });
+          createdDocId = docRef.id;
         } else if (suggestion.type === 'note') {
-          await addDoc(collection(db, 'notes'), {
-            title: suggestion.title,
-            courseName: 'General',
+          const docRef = await addDoc(collection(db, 'notes'), {
+            title: reviewFormData.title,
+            courseName: reviewFormData.courseName,
+            fileUrl: reviewFormData.fileUrl,
             uploadedBy: suggestion.creatorName,
             visibility: 'public',
             createdAt: serverTimestamp()
           });
+          createdDocId = docRef.id;
         }
+
+        // Notify all students about new content
+        await addDoc(collection(db, 'notifications'), {
+          userId: 'student_all',
+          title: `New ${suggestion.type.charAt(0).toUpperCase() + suggestion.type.slice(1)} Available`,
+          message: `Official ${suggestion.type} "${reviewFormData.title}" has been published.`,
+          isRead: false,
+          createdAt: serverTimestamp(),
+          relatedId: createdDocId,
+          type: `new_${suggestion.type}`
+        });
       }
 
       await addDoc(collection(db, 'notifications'), {
@@ -222,11 +283,20 @@ export default function AdminPanel() {
               {pendingSuggestions.map((sg) => (
                 <motion.div
                   key={sg.id}
+                  ref={el => itemRefs.current[sg.id] = el}
                   layout
                   initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                  animate={{ 
+                    opacity: 1, 
+                    scale: highlightId === sg.id ? 1.02 : 1,
+                    borderColor: highlightId === sg.id ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+                    backgroundColor: highlightId === sg.id ? 'rgba(255, 255, 255, 0.03)' : 'rgba(17, 17, 17, 1)',
+                  }}
+                  transition={{ duration: 0.5 }}
                   exit={{ opacity: 0, x: -100 }}
-                  className="bg-[#111111] border border-white/5 rounded-[40px] p-8 md:p-12"
+                  className={`border rounded-[40px] p-8 md:p-12 transition-all duration-300 ${
+                    highlightId === sg.id ? 'ring-2 ring-white/20' : ''
+                  }`}
                 >
                   <div className="space-y-8">
                     <div className="flex flex-wrap items-center gap-4">
@@ -251,24 +321,115 @@ export default function AdminPanel() {
 
                     {reviewingId === sg.id ? (
                       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pt-8 border-t border-white/5">
-                        <textarea 
-                          value={feedback}
-                          onChange={(e) => setFeedback(e.target.value)}
-                          placeholder="Provide context for your decision..."
-                          className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 text-sm focus:outline-none focus:border-white/30 transition-all resize-none min-h-[120px]"
-                        />
-                        <div className="flex gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Final Title</label>
+                            <input 
+                              type="text"
+                              value={reviewFormData.title}
+                              onChange={(e) => setReviewFormData({...reviewFormData, title: e.target.value})}
+                              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm focus:outline-none focus:border-white/30"
+                            />
+                          </div>
+
+                          {sg.type === 'notice' ? (
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Priority</label>
+                              <select 
+                                value={reviewFormData.priority}
+                                onChange={(e) => setReviewFormData({...reviewFormData, priority: e.target.value})}
+                                className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm appearance-none focus:outline-none focus:border-white/30"
+                              >
+                                <option value="low">Low</option>
+                                <option value="normal">Normal</option>
+                                <option value="urgent">Urgent</option>
+                              </select>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Course Name</label>
+                              <input 
+                                type="text"
+                                placeholder="General"
+                                value={reviewFormData.courseName}
+                                onChange={(e) => setReviewFormData({...reviewFormData, courseName: e.target.value})}
+                                className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm focus:outline-none focus:border-white/30"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {sg.type !== 'note' && (
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Modified Description</label>
+                            <textarea 
+                              rows={4}
+                              value={reviewFormData.content}
+                              onChange={(e) => setReviewFormData({...reviewFormData, content: e.target.value})}
+                              className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 text-sm focus:outline-none focus:border-white/30 transition-all resize-none"
+                            />
+                          </div>
+                        )}
+
+                        {sg.type === 'lecture' && (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Week</label>
+                              <input 
+                                type="number"
+                                value={reviewFormData.week}
+                                onChange={(e) => setReviewFormData({...reviewFormData, week: e.target.value})}
+                                className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm focus:outline-none focus:border-white/30"
+                              />
+                            </div>
+                            <div className="md:col-span-2 space-y-2">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">YouTube/Video URL</label>
+                              <input 
+                                type="url"
+                                placeholder="https://youtube.com/..."
+                                value={reviewFormData.videoUrl}
+                                onChange={(e) => setReviewFormData({...reviewFormData, videoUrl: e.target.value})}
+                                className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm focus:outline-none focus:border-white/30"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {(sg.type === 'lecture' || sg.type === 'note') && (
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Material/Drive URL</label>
+                            <input 
+                              type="url"
+                              placeholder="https://drive.google.com/..."
+                              value={reviewFormData.fileUrl}
+                              onChange={(e) => setReviewFormData({...reviewFormData, fileUrl: e.target.value})}
+                              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 h-14 text-sm focus:outline-none focus:border-white/30"
+                            />
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-600 ml-4">Admin Feedback (to Student)</label>
+                          <textarea 
+                            value={feedback}
+                            onChange={(e) => setFeedback(e.target.value)}
+                            placeholder="Optionally provide context for your decision..."
+                            className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 text-sm focus:outline-none focus:border-white/30 transition-all resize-none min-h-[100px]"
+                          />
+                        </div>
+
+                        <div className="flex flex-col md:flex-row gap-4">
                           <button
                             disabled={processing}
                             onClick={() => handleAction(sg, 'approved')}
-                            className="flex-1 h-16 bg-green-500 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-green-600 transition-all"
+                            className="flex-1 h-16 bg-white text-black rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-neutral-200 transition-all group"
                           >
-                            <Check className="w-5 h-5" /> Approve & Publish
+                            <Check className="w-5 h-5 group-hover:scale-110 transition-transform" /> Approve & Finalize
                           </button>
                           <button
                             disabled={processing}
                             onClick={() => handleAction(sg, 'rejected')}
-                            className="flex-1 h-16 bg-red-500 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-red-600 transition-all"
+                            className="h-16 px-12 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-red-500/20 transition-all"
                           >
                             <X className="w-5 h-5" /> Reject
                           </button>
@@ -278,7 +439,7 @@ export default function AdminPanel() {
                     ) : (
                       <div className="pt-8 border-t border-white/5">
                         <button
-                          onClick={() => setReviewingId(sg.id)}
+                          onClick={() => startReview(sg)}
                           className="h-14 px-10 bg-white text-black rounded-2xl font-bold flex items-center gap-3 hover:scale-105 active:scale-95 transition-all"
                         >
                           <MessageSquare className="w-5 h-5" /> Open Review
