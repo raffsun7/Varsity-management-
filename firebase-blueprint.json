@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role and department information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "teacher", "student"] },
+        "department": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role", "createdAt"]
+    },
+    "Suggestion": {
+      "title": "Suggestion",
+      "description": "Content submitted by users for admin approval",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["notice", "lecture", "note"] },
+        "createdBy": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "feedback": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "type", "createdBy", "status", "timestamp"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Official announcements published by admin",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "priority": { "type": "string", "enum": ["low", "normal", "urgent"] },
+        "audience": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "priority", "audience", "createdAt"]
+    },
+    "Lecture": {
+      "title": "Lecture",
+      "description": "Learning content modules",
+      "type": "object",
+      "properties": {
+        "courseName": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "week": { "type": "integer" },
+        "videoUrl": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseName", "title", "week", "createdAt"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "Study materials and PDFs",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "courseName": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["public", "department"] },
+        "uploadedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "fileUrl", "courseName", "uploadedBy", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System-generated notifications for users",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "relatedId": { "type": "string" },
+        "userId": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "userId", "isRead", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/suggestions/{id}": {
+      "schema": "Suggestion",
+      "description": "Moderation layer for content"
+    },
+    "/notices/{id}": {
+      "schema": "Notice",
+      "description": "Approved official notices"
+    },
+    "/lectures/{id}": {
+      "schema": "Lecture",
+      "description": "Structured academic lectures"
+    },
+    "/notes/{id}": {
+      "schema": "Note",
+      "description": "Shared study materials"
+    },
+    "/notifications/{id}": {
+      "schema": "Notification",
+      "description": "Real-time user alerts"
+    }
+  }
+}
